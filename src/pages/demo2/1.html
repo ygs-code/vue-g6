@@ -1,0 +1,473 @@
+<template>
+    <div id="container"></div>
+  </template>
+  
+  <script>
+  // 引入antv-G6
+  import G6 from "@antv/g6";
+  import { ISSUE_STATUS } from "@/utils/constant";
+  import { getLabel } from "@/utils";
+  
+  // G6的配置项
+  G6.registerNode(
+    "icon-node",
+    {
+      options: {
+        size: [60, 20], // 宽高
+        stroke: "#91d5ff", // 变颜色
+        fill: "#fff", // 填充色
+      },
+      // draw是绘制后的附加操作-节点的配置项  图形分组，节点中图形对象的容器
+      draw(cfg, group) {
+        // 获取节点的配置
+        const styles = this.getShapeStyle(cfg);
+        // 解构赋值
+        const { labelCfg = {} } = cfg;
+  
+        const w = styles.width;
+        const h = styles.height;
+        // 向分组中添加新的图形 图形 配置 rect矩形 xy 代表左上角坐标 w h是宽高
+        const keyShape = group.addShape("rect", {
+          attrs: {
+            ...styles,
+            x: -w / 2,
+            y: -h / 2,
+          },
+        });
+  
+        // 文本文字的配置
+        if (cfg.title) {
+          group.addShape("text", {
+            attrs: {
+              ...labelCfg.style,
+              text: cfg.title,
+              x: 50 - w / 2,
+              y: 25 - h / 2,
+            },
+          });
+        }
+  
+        return keyShape;
+      },
+      // 更新节点后的操作，一般同 afterDraw 配合使用
+      update: undefined,
+    },
+    "rect"
+  );
+  
+  const nodeHeight = (obj) => {
+    // if (obj.depth == 0) {
+    //   return 100;
+    // }
+    const l = ["manager", "title"];
+  
+    const arr = l.filter((item) => {
+      return obj[item];
+    });
+    return arr.length * 25 + 50;
+  };
+  G6.registerNode(
+    "dom-node",
+    {
+      draw: (cfg, group) => {
+        let str = `
+          <div class='item-box catalog-node ${
+            cfg.isSelected ? "is-selected" : ""
+          } ${cfg.status}-box' οnclick='handleDetail("${cfg.id}")' id="${
+          cfg.id
+        }" style="width: ${cfg.size[0] - 5}px;">
+            ${
+              cfg.status
+                ? `<span class='status ${cfg.status}'>${getLabel( ISSUE_STATUS, cfg.status )}</span>`
+                : ""
+            }
+            ${
+              cfg?.manager?.name
+                ? `<p class=''><span class="title-txt avatar-img" title='负责人'> <img src="${cfg?.manager?.avatar}" /> </span>${cfg.manager.name} </p>`
+                : ""
+            }
+            <div class='title' οnclick='handleDetail("${cfg.id}")'><span ${
+          cfg.typeName === "Bug" ? `class='tipText'` : ""
+        }>${cfg.title}</span>
+            </div>
+          </div>
+          `;
+  
+        return group.addShape("dom", {
+          attrs: {
+            width: cfg.size[0],
+            height: nodeHeight(cfg),
+            // 传入 DOM 的 html
+            html: str,
+          },
+          draggable: true,
+        });
+      },
+    },
+    "single-node"
+  );
+  
+  // 绘制层级之间的连接线
+  G6.registerEdge("flow-line", {
+    // 绘制后的附加操作
+    draw(cfg, group) {
+      // 边两端与起始节点和结束节点的交点；
+      const startPoint = cfg.startPoint;
+      const endPoint = cfg.endPoint;
+      // 边的配置
+      const { style } = cfg;
+      const shape = group.addShape("path", {
+        attrs: {
+          stroke: style.stroke, // 边框的样式
+          endArrow: style.endArrow, // 结束箭头
+          // 路径
+          path: [
+            ["M", startPoint.x, startPoint.y],
+            ["L", startPoint.x, (startPoint.y + endPoint.y) / 2],
+            ["L", endPoint.x, (startPoint.y + endPoint.y) / 2],
+            ["L", endPoint.x, endPoint.y],
+          ],
+        },
+      });
+  
+      return shape;
+    },
+  });
+  
+  // 默认连接边线的颜色 末尾箭头
+  const defaultEdgeStyle = {
+    stroke: "#ccc",
+  };
+  
+  // 默认布局
+  // compactBox 紧凑树布局
+  // 从根节点开始，同一深度的节点在同一层，并且布局时会将节点大小考虑进去。
+  const defaultLayout = {
+    type: "compactBox", // 布局类型树
+    direction: "TB", // TB 根节点在上，往下布局
+    getId: function getId(d) {
+      // 节点 id 的回调函数
+      return d.id;
+    },
+    getHeight: function getHeight() {
+      // 节点高度的回调函数
+      return 16;
+    },
+    getWidth: function getWidth() {
+      // 节点宽度的回调函数
+      return 16;
+    },
+    getVGap: function getVGap(d) {
+      // 节点纵向间距的回调函数
+      if (d.parId === "0") return 70;
+      return 80;
+    },
+    getHGap: function getHGap(d) {
+      // 节点横向间距的回调函数
+      if (d.parId === "0") return 100;
+      return 150;
+    },
+  };
+  
+  // 自定义拖动事件
+  G6.registerBehavior("finger-drag-canvas", {
+    dragging: false,
+    offset: 0,
+    getEvents() {
+      return {
+        touchstart: "onDragStart",
+        touchmove: "onDrag",
+        touchend: "onDragEnd",
+      };
+    },
+    onDragStart(e) {
+      const self = this;
+      self.dragging = false;
+      self.offset = 0;
+  
+      const clientX = +e.clientX;
+      const clientY = +e.clientY;
+      this.origin = {
+        x: clientX,
+        y: clientY,
+      };
+    },
+    onDrag(e) {
+      const { graph } = this;
+      if (!this.dragging) {
+        this.dragging = true;
+      }
+      this.updateViewport(e);
+    },
+    onDragEnd(evt) {
+      const edges = graph.getEdges();
+      const nodes = graph.getNodes();
+      const node = evt.item;
+      const point = { x: evt.x, y: evt.y };
+      // this.updateViewport(e);
+      this.dragging = false;
+      // 这里开始识别点击事件
+      if (this.offset < 30) {
+        // 触发点击事件（或者依靠e.target，e.type去做相应的业务操作）
+        console.log(evt, evt.type);
+      }
+      console.log(evt, evt.type);
+      this.updateViewport(evt);
+    },
+    updateViewport(e) {
+      const { origin } = this;
+      const clientX = +e.clientX;
+      const clientY = +e.clientY;
+  
+      if (isNaN(clientX) || isNaN(clientY)) {
+        return;
+      }
+      let dx = clientX - origin.x;
+      let dy = clientY - origin.y;
+      if (this.get("direction") === "x") {
+        dy = 0;
+      } else if (this.get("direction") === "y") {
+        dx = 0;
+      }
+      this.origin = {
+        x: clientX,
+        y: clientY,
+      };
+      const width = graph.get("width");
+      const height = graph.get("height");
+      const graphCanvasBBox = graph.get("canvas").getCanvasBBox();
+      if (
+        (graphCanvasBBox.minX <= width && graphCanvasBBox.minX + dx > width) ||
+        (graphCanvasBBox.maxX >= 0 && graphCanvasBBox.maxX + dx < 0)
+      ) {
+        dx = 0;
+      }
+      if (
+        (graphCanvasBBox.minY <= height && graphCanvasBBox.minY + dy > height) ||
+        (graphCanvasBBox.maxY >= 0 && graphCanvasBBox.maxY + dy < 0)
+      ) {
+        dy = 0;
+      }
+      if (dx === 0 && dy === 0) return;
+      // 增加拖动距离统计
+      this.offset += Math.abs(dx) + Math.abs(dy);
+      graph.translate(dx, dy);
+    },
+  });
+  
+  let graph;
+  
+  export default {
+    name: "Home",
+    props: {
+      treeListData: {
+        type: Array,
+        default: () => [],
+      },
+      options: {
+        type: Object,
+        default: () => {
+          return {};
+        },
+      },
+    },
+    emits: ["handleSelected"],
+    data() {
+      return {
+        listData: [],
+        selectedId: "", // 选中的节点Id
+        initOptions: {
+          isFitView: true, // 是否默认适应全局
+          isFitCenter: true, // 是否居中
+          isHiddenRoot: true, // 是否显示根元素
+        },
+        flag: false, // 如果是移动端，true
+      };
+    },
+    methods: {
+      G6init() {
+        if (typeof window !== "undefined") {
+          window.onresize = () => {
+            if (!graph || graph.get("destroyed")) return;
+            if (!container || !container.scrollWidth || !container.scrollHeight)
+              return;
+            graph.changeSize(container.scrollWidth, container.scrollHeight);
+          };
+        }
+        // 获取容器
+        const container = document.getElementById("container");
+        // 获取容器的宽高
+        const width = container.scrollWidth;
+        const height = container.scrollHeight - 30 || 500;
+  
+        // Graph 是 G6 图表的载体-实例化
+        graph = new G6.TreeGraph({
+          container: "container", // 图的 DOM 容器
+          width,
+          height,
+          linkCenter: true, // 指定边是否连入节点的中心
+          modes: {
+            // default 模式中包含点击选中节点行为和拖拽画布行为;
+            default: [
+              {
+                type: "zoom-canvas",
+                enableOptimize: true, //开启性能优化
+              },
+              "drag-node",
+              "drag-canvas",
+              // "zoom-canvas",
+              "click-select",
+            ],
+            edit: ["click-select"],
+          },
+          // 默认状态下节点的配置
+          defaultNode: {
+            type: "dom-node", // 'icon-node',
+            size: [250, 60],
+          },
+          // 默认状态下边线的配置，
+          defaultEdge: {
+            type: "flow-line",
+            style: defaultEdgeStyle,
+          },
+          // 布局配置项
+          layout: defaultLayout,
+          renderer: "svg",
+        });
+        graph.data([...this.listData][0]);
+  
+        graph.render();
+        // 让画布内容适应视口。
+        if (this.initOptions.isFitView) {
+          graph.fitView();
+        }
+        if (this.initOptions.isFitCenter) {
+          graph.fitCenter();
+        }
+        if (!this.initOptions.isHiddenRoot) {
+          // 是否要移除根节点
+          const item = graph.findById([...this.listData][0].id);
+          graph.removeItem(item);
+        }
+        // 改变视口的缩放比例，在当前画布比例下缩放，是相对比例。
+        graph.zoom(1);
+      },
+  
+      async init() {
+        let _this = this;
+        if (graph) {
+          // 如果原来有画布，需要先清除
+          graph.destroy();
+        }
+        this.initOptions = Object.assign(this.initOptions, this.options);
+        this.listData = [...this.treeListData];
+        function setSelectFalse(obj) {
+          obj.forEach((element) => {
+            element.isSelected = false;
+            if (element.children) {
+              setSelectFalse(element.children);
+            }
+          });
+        }
+        window.handleDetail = (id) => {
+          const item = graph.findById(id);
+          if (item?._cfg?.parent) {
+            _this.$emit("handleSelected", id);
+          }
+        };
+        this.G6init();
+        this.isMobile();
+      },
+      isMobile() { // 判断是否是移动端
+        this.flag = navigator.userAgent.match(
+          /(phone|pad|pod|iPhone|iPod|ios|iPad|Android|Mobile|BlackBerry|IEMobile|MQQBrowser|JUC|Fennec|wOSBrowser|BrowserNG|WebOS|Symbian|Windows Phone)/i
+        );
+        if (this.flag) {
+          graph.setMode("edit");
+          graph.addBehaviors("finger-drag-canvas", "edit");
+        }
+      },
+    },
+    beforeDestroy() {
+      console.log("推出");
+    },
+  };
+  </script>
+  <style lang="scss" scoped>
+  @import "@/assets/styles/common.scss";
+  #container {
+    height: 100%;
+    width: 100%;
+    border: 1px solid #efefef;
+    ::v-deep .title {
+      font-size: 15px;
+      display: block;
+      // text-align: center;
+      position: relative;
+      margin: 10px 0;
+      padding-left: 15px;
+      color: #1199ff;
+      cursor: pointer;
+    }
+    ::v-deep .item-box {
+      background-color: #fff;
+      border-radius: 5px;
+      padding: 5px;
+      // height: 100%;
+      border: 1px solid;
+      position: relative;
+      p {
+        margin-bottom: 2px;
+        display: flex;
+        align-items: center;
+        color: #333;
+      }
+      &.is-selected {
+        border: 1px solid #1199ff;
+      }
+      .tipText {
+        color: red;
+      }
+      .logs {
+        height: 70px;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+      }
+      .title-txt {
+        display: inline-block;
+        width: 80px;
+        color: rgb(169, 169, 169);
+      }
+      .avatar-img {
+        width: 35px;
+        height: 35px;
+        margin-right: 15px;
+        img {
+          width: 100%;
+          height: 100%;
+          border-radius: 100%;
+        }
+      }
+      .status {
+        position: absolute;
+        right: 15px;
+        top: 15px;
+        border: 1px solid;
+        padding: 0 5px;
+        font-size: 12px;
+        border-radius: 4px;
+        // Wait 未开始、Doing进行中、Pause暂停、Verify待验证、Done已完成、Cancel已取消
+      }
+    }
+  }
+  ::v-deep g g g:not(:first-child) foreignObject {
+    font-size: 14px;
+  }
+  foreignObject {
+    overflow: initial !important;
+  }
+  </style>
+  
+  
