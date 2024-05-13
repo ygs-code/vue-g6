@@ -11,7 +11,120 @@ export default {
   name: "HelloWorld",
   data() {
     return {
-      msg: "Welcome to Your Vue.js App"
+      treeData: [
+        {
+          id: "0",
+          label: "0",
+          children: [
+            {
+              id: "0-0",
+              label: "0-0",
+              children: [
+                {
+                  id: "0-0-0",
+                  label: "0-0-0"
+                },
+                {
+                  id: "0-0-1",
+                  label: "0-0-1"
+                },
+                {
+                  id: "0-0-2",
+                  label: "0-0-2"
+                },
+                {
+                  id: "0-0-3",
+                  label: "0-0-3"
+                },
+                {
+                  id: "0-0-4",
+                  label: "0-0-4"
+                },
+                {
+                  id: "0-0-5",
+                  label: "0-0-5"
+                }
+              ]
+            },
+            {
+              id: "0-1",
+              label: "0-1",
+              children: [
+                {
+                  id: "0-1-0",
+                  label: "0-1-0"
+                },
+                {
+                  id: "0-1-1",
+                  label: "0-1-1"
+                },
+                {
+                  id: "0-1-2",
+                  label: "0-1-2"
+                },
+                {
+                  id: "0-1-3",
+                  label: "0-1-3"
+                },
+                {
+                  id: "0-1-4",
+                  label: "0-1-4"
+                },
+                {
+                  id: "0-1-5",
+                  label: "0-1-5"
+                }
+              ]
+            },
+            {
+              id: "0-2",
+              label: "0-2"
+            },
+            {
+              id: "0-3",
+              label: "0-3"
+            },
+            {
+              id: "0-4",
+              label: "0-4"
+            },
+            {
+              id: "0-5",
+              label: "0-5"
+            }
+          ]
+        },
+        {
+          id: "1",
+          label: "1",
+          children: [
+            {
+              id: "1-0",
+              label: "1-0"
+            },
+            {
+              id: "1-1",
+              label: "1-1"
+            },
+            {
+              id: "1-2",
+              label: "1-2"
+            },
+            {
+              id: "1-3",
+              label: "1-3"
+            },
+            {
+              id: "1-4",
+              label: "1-4"
+            },
+            {
+              id: "1-5",
+              label: "1-5"
+            }
+          ]
+        }
+      ]
     };
   },
   beforeCreate: function() {
@@ -40,6 +153,69 @@ export default {
   beforeDestroy: function() {},
 
   methods: {
+    treeToList(data) {
+      data = this.mapTree(data, (index, item, parent = {}) => {
+        const { id } = parent;
+        return {
+          parentId: id,
+          ...item
+        };
+      });
+
+      let nodes = [];
+      let edges = [];
+
+      /*
+          {
+            source: "0",  // 父
+            target: "1"  子 
+          },
+   */
+
+      this.mapTree(data, (index, item, parent = {}) => {
+        const { id, parentId } = item;
+        nodes.push(item);
+
+        if (parentId) {
+          edges.push({
+            source: parentId, // 父
+            target: id // 子
+          });
+        }
+      });
+
+      // 去重
+      nodes = nodes.reduce((acc, item) => {
+        const { id } = item;
+        if (
+          !acc.some(item => {
+            return item.id == id;
+          })
+        ) {
+          acc.push(item);
+        }
+
+        return acc;
+      }, []);
+
+      edges = edges.reduce((acc, item) => {
+        const { target } = item;
+        if (
+          !acc.some(item => {
+            return item.target == target;
+          })
+        ) {
+          acc.push(item);
+        }
+
+        return acc;
+      }, []);
+
+      return {
+        edges,
+        nodes
+      };
+    },
     concatTree(data, child, edge) {
       return data.map(item => {
         let { id, children = [] } = item;
@@ -56,14 +232,14 @@ export default {
       });
     },
 
-    mapTree(data, callback = () => {}) {
+    mapTree(data, callback = () => {}, ...ags) {
       return data.map((item, index) => {
         const { children = [] } = item;
         return {
           ...item,
-          ...(callback(index, item) || {}),
+          ...(callback(index, item, ...ags) || {}),
           children: children.length
-            ? this.mapTree(children, callback)
+            ? this.mapTree(children, callback, item)
             : undefined
         };
       });
@@ -338,6 +514,7 @@ export default {
       // let edges = this.filterEdges(newTree, data.edges);
     },
     init() {
+      let data = this.treeToList(this.treeData);
       const closeNode = item => {
         const {
           _cfg: { model, children = [] }
@@ -363,7 +540,8 @@ export default {
         graph.destroy();
       };
 
-      let data = {
+      /*
+  let data = {
         nodes: [
           {
             id: "0",
@@ -599,6 +777,7 @@ export default {
           }
         ]
       };
+*/
 
       let sortByCombo = false;
 
